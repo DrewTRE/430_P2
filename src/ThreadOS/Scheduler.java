@@ -6,9 +6,9 @@ public class Scheduler extends Thread {
 	private Vector queue1;
 	private Vector queue2;
 	private int timeSlice;
-	// New quantum times. zeroSlice is half of timeSlice and twoSlice is double timeSlice.
+	// New quantum times. zeroSlice is half of timeSlice. No need for the double of timeSlice.
+	// I basically just use zeroSlice for everything. 
 	private int zeroSlice;
-	private int twoSlice;
 	private boolean[] tids; // Indicate which ids have been used
 	private static final int DEFAULT_TIME_SLICE 	= 1000;
 	private static final int DEFAULT_MAX_THREADS 	= 10000;
@@ -95,7 +95,6 @@ public class Scheduler extends Thread {
 	public Scheduler() {
 		this.zeroSlice 	= DEFAULT_TIME_SLICE / 2;
 		this.timeSlice 	= DEFAULT_TIME_SLICE;
-		this.twoSlice 	= DEFAULT_TIME_SLICE * 2;
 		this.queue0 	= new Vector();
 		this.queue1 	= new Vector();
 		this.queue2 	= new Vector();
@@ -105,7 +104,6 @@ public class Scheduler extends Thread {
 	public Scheduler(int quantum) {
 		this.zeroSlice 	= quantum / 2;
 		this.timeSlice 	= quantum;
-		this.twoSlice 	= quantum * 2;
 		this.queue0 	= new Vector();
 		this.queue1 	= new Vector();
 		this.queue2 	= new Vector();
@@ -119,13 +117,13 @@ public class Scheduler extends Thread {
 	public Scheduler(int quantum, int maxThreads) {
 		this.zeroSlice 	= quantum / 2;
 		this.timeSlice 	= quantum;
-		this.twoSlice 	= quantum * 2;
 		this.queue0 	= new Vector();
 		this.queue1 	= new Vector();
 		this.queue2 	= new Vector();
 		initTid(maxThreads);
 	}
 
+	// Changed to use zeroSlice as the basic unit of sleep. 
 	private void schedulerSleep() {
 		try {
 			Thread.sleep(zeroSlice);
@@ -176,19 +174,16 @@ public class Scheduler extends Thread {
 	// Other than this difference, the Scheduler repeats retrieving a next available TCB from the list,
 	// raising up the corresponding thread's priority,
 	// yielding CPU to this thread with sleep( ), and lowering the thread's priority.
-public void run( ) {
+
+	// Ugly long nested if statement, would have been nice to make helper methods for everything, 
+	// but... alas. 
+	// Structure basically used what was there before, removing the first if conditional of the queue being
+	// empty. Added some sleeps between checking the queues, always checking in 500ms slices. 
+	public void run( ) {
 		Thread current = null;
-		// Removed. 
-		// this.setPriority( 6 );
-		
 		while ( true ) {
 		    try {
-				// get the next TCB and its thread
-				if ( queue0.size( ) == 0 ) {
-				    continue;
-				}
-
-				else if ( queue0.size() != 0) {
+				if ( queue0.size() != 0) {
 					TCB currentTCB = (TCB)queue0.firstElement( );
 					if ( currentTCB.getTerminated( ) == true ) {
 					    queue0.remove( currentTCB );
@@ -197,6 +192,7 @@ public void run( ) {
 					}
 					current = currentTCB.getThread( );
 					if ( current != null ) {
+						// Check if thread was previously being processed.
 					    if ( current.isAlive( ) ) {
 							current.resume(); 
 						}
@@ -214,19 +210,14 @@ public void run( ) {
 						if (current != null && current.isAlive()) {
 							current.suspend();
 						}
-						this.queue0.remove(currentTCB); // Took too long, remove and move to queue 1.
+						this.queue0.remove(currentTCB); // Took too long, remove and move to queue1.
 						this.queue1.add(currentTCB);
 					}
-				}	
-				// Check if queue 1 is empty, restart if so. 
-				if (queue1.size() == 0) {
-					continue;
-				}
-				// If not empty. 
+				}	 
 				else if (queue1.size() != 0) {
-					// Set current TCB to the first element in the queue.
+					// Set current TCB to the first element in the queue1.
 					TCB currentTCB = (TCB) queue1.firstElement();
-					// If that TCB is set to be terminated, remove it from the queue.
+					// If that TCB is set to be terminated, remove it from the queue1.
 					if (currentTCB.getTerminated() == true) {
 						this.queue1.remove(currentTCB);
 						this.returnTid(currentTCB.getTid());
@@ -234,6 +225,7 @@ public void run( ) {
 					}
 					current = currentTCB.getThread();
 					if (current != null) {
+						// Check if anyuthing is still processing in queue1. 
 						if (current.isAlive()) {
 							current.resume();				
 						} else {
@@ -242,12 +234,14 @@ public void run( ) {
 							current.start();
 						}
 					}
+					// Sleep for a slice. 
 					this.schedulerSleep();
-					
+					// If queue0 has something inside, continue the while loop again to process that thread. 
 					if (queue0.size() > 0) {
 						current.suspend();
 						continue;
 					}
+					// If nothing is in queue0, start keep checking for 500ms, for a total of 1000. 
 					this.schedulerSleep();
 
 					synchronized (this.queue1) {
@@ -255,14 +249,11 @@ public void run( ) {
 						if (current != null && current.isAlive()){
 							current.suspend();
 						}						
-						this.queue1.remove(currentTCB); // Took too long, remove and move to queue 1.
+						this.queue1.remove(currentTCB); // Took too long, remove and move to queue2.
 						this.queue2.add(currentTCB);
 					}
 				}
-
-				if (queue2.size() == 0) {
-					continue;
-				}
+				// If queue2 is not empty, do some work. 
 				else if (queue2.size() != 0) {
 					// Set current TCB to the first element in the queue.
 					TCB currentTCB = (TCB) queue2.firstElement();
@@ -274,6 +265,7 @@ public void run( ) {
 					}
 					current = currentTCB.getThread();
 					if (current != null) {
+						// Check if any threads still are active. 
 						if (current.isAlive()) {
 							current.resume();
 						} else {
@@ -282,7 +274,7 @@ public void run( ) {
 							current.start();
 						}
 					}
-					// Sleep and check in intervals of 500ms if queue0 or 1 have a thread. 
+					// Sleep and check in intervals of 500ms if queue0 or 1 have a thread, continue while loop if so. 
 					for (int i = 0; i < 4; i ++) {
 						this.schedulerSleep();
 						if (queue0.size() > 0) {
@@ -293,14 +285,13 @@ public void run( ) {
 							current.suspend();
 							continue;
 						}
-					// System.out.println("* * * Context Switch * * * ");
 					}
 					synchronized (this.queue2) {
 						// Check if the thread is still being processed.
 						if (current != null && current.isAlive()){
 							current.suspend();
 						}
-						this.queue2.remove(currentTCB); // Took too long, remove and move to queue 1.
+						this.queue2.remove(currentTCB); // Took too long, throw it in the back of queue2. 
 						this.queue2.add(currentTCB);
 					}
 				}	
