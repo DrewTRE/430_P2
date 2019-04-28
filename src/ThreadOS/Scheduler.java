@@ -1,3 +1,8 @@
+/* 
+Author: Drew Kwak
+Date: 4/27/2019
+Description: Project 2 Scheduler. Implementation of Multilevel Feedback Queue Scheduler. 
+*/
 import java.util.*;
 
 public class Scheduler extends Thread {
@@ -38,7 +43,6 @@ public class Scheduler extends Thread {
 		return -1;
 	}
 
-
 	// Return the thread ID and set the corresponding tids element to be unused
 	// Sets the corresponding tid[] element, (i.e., tid[tid]) false. The return value is false if tid[tid] is already
 	// false, (i.e., if this tid has not been used), otherwise true.
@@ -63,7 +67,6 @@ public class Scheduler extends Thread {
 					return tcb;
 			}
 		}
-
 		synchronized (queue1) {
 			for (int i = 0; i < queue1.size(); i++) {
 				TCB tcb = (TCB) queue1.elementAt(i);
@@ -72,7 +75,6 @@ public class Scheduler extends Thread {
 					return tcb;
 			}
 		}
-
 		synchronized (queue2) {
 			for (int i = 0; i < queue2.size(); i++) {
 				TCB tcb = (TCB) queue2.elementAt(i);
